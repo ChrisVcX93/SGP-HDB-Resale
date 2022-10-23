@@ -5,6 +5,7 @@ from callbacks import *
 import dash_leaflet as dl
 import dash_leaflet.express as dlx
 from dash_extensions.javascript import assign
+import dash_bootstrap_components as dbc
 
 # Cool, dark tiles by Stadia Maps.
 url = 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png'
@@ -44,9 +45,9 @@ print(f"All the towns available in whole df {town_all}")
 point_to_layer = assign("function(feature, latlng, context) {return L.circleMarker(latlng);}")
 
 layout1 = html.Div([
-    html.H1('WELCOME TO HDB RESALE INFO WEBSITE'),
+    html.H1('Welcome to HDB Resale Web App :)'),
     dcc.Tabs([
-        dcc.Tab(label='Available flats for this month', children=[
+        dcc.Tab(label=f'Available flats for {today.year}/{today.month}', children=[
             html.Div([
                 dcc.Store(id='mtown'),
                 dcc.Dropdown(
@@ -94,21 +95,21 @@ layout1 = html.Div([
 
             html.H1(""),
 
-            html.H3("Block Vicinity"),
             # map component
-            html.Div([
-                dl.Map(children=[dl.TileLayer(), dl.GeoJSON(data=None, id="geojson", zoomToBounds=True,
-                                                            options=dict(pointToLayer=point_to_layer))
-                                 ])
-            ], style={'width': '100%', 'height': '50vh', 'margin': "auto", "display": "block", "position": "relative"}),
+            html.Div([html.P("Selected Block Vicinity (Pls click any row above)"),
+                      dl.Map(children=[dl.TileLayer(), dl.GeoJSON(data=None, id="geojson", zoomToBounds=True,
+                                                                  options=dict(pointToLayer=point_to_layer))
+                                       ])
+                      ], style={'width': '50%', 'height': '50vh', 'margin': "auto", "display": "inline-block",
+                                "position": "relative"}),
 
-            # pie chart
-            html.Div(
-                [dcc.Graph(id="Pie")]),
+            # pie chart for flat
+            # do like this so can prevent emtpy chart show up at start
+            # then once got data append to children
+            html.Div(id="Pie", children=[], style={'width': '49%', 'display': 'inline-block'}),
 
         ])
         ,
-
 
         dcc.Tab(label='Resale Flat Trends', children=[
             # drop down to select which town and store in m2town
@@ -141,10 +142,9 @@ layout1 = html.Div([
                     multi=True,
                 )]),
 
-
             # 1. Resale price vs time trend by flat type
-            html.Div(
-                [dcc.Graph(id="Graph1")])
+            html.Div([html.P("Analysis Plot"),
+                     dcc.Graph(id="Graph1")])
             # 3. Resale price vs Lease remaining
 
             # 4. Resale price vs floor area square meter
@@ -154,3 +154,4 @@ layout1 = html.Div([
     ])
 
 ])
+
