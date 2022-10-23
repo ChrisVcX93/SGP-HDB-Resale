@@ -1,7 +1,7 @@
 import dash
 import dash_table as dt
 from dash.dependencies import Input, Output, State
-
+import dash_core_components as dcc
 from app import app
 import pandas as pd
 import requests
@@ -29,7 +29,8 @@ def jprint(obj):
 parameters = {
     "resource_id": "f1765b54-a209-4718-8d38-a39237f502b3",
     "sort": "month desc",
-    "limit": "1000",
+    #limit can change to 100 if too laggy
+    "limit": "5000",
     # "offset": "5"
 }
 
@@ -203,21 +204,17 @@ def display_value(value):
 
 # to output final table based on town, model, flat type and price range
 # output only when selected once the last dropdown price range is selected
+# to also output a pie chart once last dropdown price range is selected
 @app.callback(
     Output('memory-table', 'data'),
-    Output('Pie', 'figure'),
+    Output('Pie', 'children'),
     Input('mpr', 'data'),
     State('mft', 'data'),
     State('mtown', 'data'),
-    State('mfm', 'data'))
-def display_value(mpr, mft, mtown, mfm):
+    State('mfm', 'data'),
+    State('Pie', 'children'))
+def display_value(mpr, mft, mtown, mfm, children):
     print(f"Final price/price range is {mpr}, Flat type is  {mft}, Town is  {mtown}, Flat mode is {mfm}")
-    df2 = df.filter(df["month"] == today).filter(df["town"] == mtown).filter(df["flat_model"] == mfm)
-    df2 = df2.groupBy("town", "flat_model", "flat_type").count()
-    total = df2.select(sum('count')).collect()[0][0]
-    df2 = df2.withColumn("% Availability", df2["count"] / total * 100)
-    df2.show()
-    fig = px.pie(df2, values= "% Availability", names="flat_type")
     if mpr is None:
         # PreventUpdate prevents ALL outputs updating
         raise dash.exceptions.PreventUpdate
@@ -230,8 +227,31 @@ def display_value(mpr, mft, mtown, mfm):
             # df1.show()
             # convert to pandas df
             df1 = df1.toPandas()
-            # need be dictionary format so that it can be outputted
-            return df1.to_dict('records'), fig
+
+            # plot the pie chart
+            # just based on the town, model, flat type just plot a pie chart
+            df2 = df.filter(df["month"] == today).filter(df["town"] == mtown).filter(df["flat_model"] == mfm)
+            # need group by and use count to count total number of different flat types
+            df2 = df2.groupBy("town", "flat_model", "flat_type").count()
+            # just to know total number flat types
+            total = df2.select(sum('count')).collect()[0][0]
+            # add new column with formula to calculate simple % availability
+            df2 = df2.withColumn("% Availability", df2["count"] / total * 100)
+            # df2.show()
+            # df2.printSchema()
+            # need convert to pandas before plot as pie chart
+            df2 = df2.toPandas()
+            fig = px.pie(df2, values="% Availability", names="flat_type", title=f"Flat types in {mtown}_{mfm}")
+
+            # first if is for when there is pie chart ready, I just need to update the figure portion so it
+            # doesnt add on more pie charts, just change the data set so its updated
+            # second if is for at the start up first ever pie chart so just append to it
+            if children:
+                children[0]["props"]["figure"] = fig
+                return df1.to_dict('records'), children
+            else:
+                children.append(dcc.Graph(figure=fig))
+                return df1.to_dict('records'), children
         else:
             print(f"price range selected is {mpr} ")
             # change column type from str to int
@@ -258,8 +278,32 @@ def display_value(mpr, mft, mtown, mfm):
             # df1.show()
             # convert to pandas df
             df1 = df1.toPandas()
-            # need be dictionary format so that it can be outputted
-            return df1.to_dict('records'), fig
+
+            # plot the pie chart
+            # just based on the town, model, flat type just plot a pie chart
+            df2 = df.filter(df["month"] == today).filter(df["town"] == mtown).filter(df["flat_model"] == mfm)
+            # need group by and use count to count total number of different flat types
+            df2 = df2.groupBy("town", "flat_model", "flat_type").count()
+            # just to know total number flat types
+            total = df2.select(sum('count')).collect()[0][0]
+            # add new column with formula to calculate simple % availability
+            df2 = df2.withColumn("% Availability", df2["count"] / total * 100)
+            # df2.show()
+            # df2.printSchema()
+            # need convert to pandas before plot as pie chart
+            df2 = df2.toPandas()
+            fig = px.pie(df2, values="% Availability", names="flat_type", title=f"Flat types in {mtown}_{mfm}")
+
+            # first if is for when there is pie chart ready, I just need to update the figure portion so it
+            # doesnt add on more pie charts, just change the data set so its updated
+            # second if is for at the start up first ever pie chart so just append to it
+            if children:
+                children[0]["props"]["figure"] = fig
+                return df1.to_dict('records'), children
+            else:
+                children.append(dcc.Graph(figure=fig))
+                return df1.to_dict('records'), children
+
 
 
 # to output address based on cell clicked (any column)
@@ -335,7 +379,7 @@ def display_value(value):
     for n in range(dft.select("flat_model").distinct().count()):
         # append unique flat types to empty list flat_type
         flat_model.append(dft.select("flat_model").distinct().collect()[n][0])
-    print(f"the flat types present in {value} are {flat_model}")
+    print(f"the flat models present in {value} are {flat_model}")
     return value, [
         {'label': i, 'value': i} for i in flat_model  # these list needs to be based on the API dataset
     ]
@@ -346,44 +390,32 @@ def display_value(value):
 @app.callback(
     Output('m2fm', 'data'),
     Output('2ft', 'options'),
-    Input('2fm', 'value'))
-def display_value(value):
+    Input('2fm', 'value'),
+    Input('2town', 'value'))
+def display_value(valuefm,valuet):
     # flat model gives a list
-    print(f"Flat model selected for analysis is {value}")
+    print(f"Flat model selected for analysis is {valuefm}")
     flat_type = []
     # new isin expression to see if the values in argument inside the column
-    dft = df.filter(df["flat_model"].isin(value))
+    dft = df.filter(df["town"].isin(valuet))
+    dft = dft.filter(dft["flat_model"].isin(valuefm))
+    print(dft)
     for n in range(dft.select("flat_type").distinct().count()):
         # append unique flat types to empty list flat_type
         flat_type.append(dft.select("flat_type").distinct().collect()[n][0])
-    print(f"the flat types present in {value} are {flat_type}")
-    return value, [
+    print(f"the flat types present in {valuefm} are {flat_type}")
+    return valuefm, [
         {'label': i, 'value': i} for i in flat_type  # these list needs to be based on the API dataset
     ]
 
 
-# just store flat types selected in the drop down
+# to just store flat type selected based on flat type dropdown
 @app.callback(
     Output('m2ft', 'data'),
     Input('2ft', 'value'))
 def display_value(value):
+    print(f"the flat types selected is {value}")
     return value
-    # convert resale price into integer using cast method on col while keeping same column name
-    # dft = dft.withColumn("resale_price", col("resale_price").cast(IntegerType()))
-    # dft.printSchema() to check if got change to int type
-    # can multiple group by, take note resale_price changes to a new column name
-    # dft = dft.groupBy("flat_type", "date").avg("resale_price")
-    # convert to pandas df
-    # dft = dft.toPandas()
-    # sort date value cos px.line plots as it is without ordering so will have zig zag lines
-    # dft = dft.sort_values(by="date")
-    # plot based on the 3 columns in PANDAS DATAFRAME
-
-    # need parition!!!!!
-    # fig = px.line(dft, x="date", y="avg(resale_price)", color='flat_type')
-    # Never return None here it'll hang, try return {'data': [
-    #             {'x': [0], 'y': [0]} for example
-
 
 # to out put graph once final flat type selected
 @app.callback(
@@ -402,47 +434,56 @@ def display_value(flattype, flatmodel, town):
         # dft.show(100)
         # can multiple group by, take note resale_price changes to a new column name
         dft = dft.groupBy("town", "date").avg("resale_price")
+        dft = dft.withColumnRenamed("avg(resale_price)", "Resale Price/SGD$")
         # convert to pandas df
         dft = dft.toPandas()
         # sort date value cos px.line plots as it is without ordering so will have zig zag lines
         dft = dft.sort_values(by="date")
         # plot based on the 3 columns in PANDAS DATAFRAME
-        fig = px.line(dft, x="date", y="avg(resale_price)", color='town')
+        fig = px.line(dft, x="date", y="Resale Price/SGD$", color='town',markers=True)
         return fig
     elif town and flatmodel and not flattype:
         print("town and flatmodel")
         dft = dft.filter(df["town"].isin(town))
         dft = dft.filter(df["flat_model"].isin(flatmodel))
-        # dft.show(100)
+        dft.show(100)
         # can multiple group by, take note resale_price changes to a new column name
         dft = dft.groupBy("town", "flat_model", "date").avg("resale_price")
         # merge town, flat model into 1 column with _ seperator for use in color in the graph
         # inside concat , need input the other 2 columns avg sale ... and date so that final dft has those columns as well
         dft = dft.select(concat_ws('_', "town", "flat_model"), "avg(resale_price)", "date")
+        dft = dft.withColumnRenamed('concat_ws(_, town, flat_model)', 'Town_FlatModel')
+        dft = dft.withColumnRenamed("avg(resale_price)", "Resale Price/SGD$")
         # convert to pandas df
         dft = dft.toPandas()
         # sort date value cos px.line plots as it is without ordering so will have zig zag lines
         dft = dft.sort_values(by="date")
         # plot based on the 3 columns in PANDAS DATAFRAME
-        fig = px.line(dft, x="date", y="avg(resale_price)", color='concat_ws(_, town, flat_model)')
+        fig = px.line(dft, x="date", y="Resale Price/SGD$", color='Town_FlatModel',markers=True)
         return fig
     elif town and flatmodel and flattype:
         print("town and flatmodel and flattype")
         dft = dft.filter(df["town"].isin(town))
         dft = dft.filter(df["flat_model"].isin(flatmodel))
         dft = dft.filter(df["flat_type"].isin(flattype))
-        # dft.show(100)
+        dft.show(100)
         # can multiple group by, take note resale_price changes to a new column name
         dft = dft.groupBy("town", "flat_model", "flat_type", "date").avg("resale_price")
         # merge town, flat model into 1 column with _ seperator for use in color in the graph
         # inside concat , need input the other 2 columns avg sale ... and date so that final dft has those columns as well
         dft = dft.select(concat_ws('_', "town", "flat_model", "flat_type"), "avg(resale_price)", "date")
+        dft = dft.withColumnRenamed('concat_ws(_, town, flat_model, flat_type)', 'Town_FlatModel_FlatType')
+        dft = dft.withColumnRenamed("avg(resale_price)","Resale Price/SGD$")
         # convert to pandas df
         dft = dft.toPandas()
         # sort date value cos px.line plots as it is without ordering so will have zig zag lines
         dft = dft.sort_values(by="date")
         # plot based on the 3 columns in PANDAS DATAFRAME
-        fig = px.line(dft, x="date", y="avg(resale_price)", color='concat_ws(_, town, flat_model, flat_type)')
+        fig = px.line(dft, x="date", y="Resale Price/SGD$", color='Town_FlatModel_FlatType',markers=True)
         return fig
     else:
         return {}  # return empty graph at the start
+
+
+
+
